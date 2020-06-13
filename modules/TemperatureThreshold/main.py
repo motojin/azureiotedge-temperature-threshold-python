@@ -11,14 +11,18 @@ import threading
 from azure.iot.device.aio import IoTHubModuleClient
 import json
 
+# Global configurations
 TEMPERATURE_THRESHOLD = 25
+
+# Global counters
 RECEIVED_MESSAGES = 0
+TWIN_CALLBACKS = 0
 
 async def main():
     try:
         if not sys.version >= "3.5.3":
-            raise Exception( "The sample requires python 3.5.3+. Current version of Python: %s" % sys.version )
-        print ( "IoT Hub Client for Python" )
+            raise Exception("The module requires python 3.5.3+. Current version of Python: %s" % sys.version)
+        print("IoT Hub Module Client for Python")
 
         # The client object is used to interact with your Azure IoT hub.
         module_client = IoTHubModuleClient.create_from_edge_environment()
@@ -49,6 +53,24 @@ async def main():
                 except Exception as ex:
                     print("Unexpected error in input1_listener: %s" % ex)
 
+        # twin_patch_listener is invoked when the module twin's desired properties are updated
+        async def twin_patch_listener(module_client):
+            global TWIN_CALLBACKS
+            global TEMPERATURE_THRESHOLD
+            while True:
+                try:
+                    data = await module_client.receive_twin_desired_properties_patch()  #blocking call
+                    print("The data in the desired properties patch was: %s" % data)
+                    TWIN_CALLBACKS += 1
+                    print("Total calls confirmed: %d" % TWIN_CALLBACKS)
+                    if "TemperatureThreshold" in data:
+                        TEMPERATURE_THRESHOLD = data["TemperatureThreshold"]
+                        reported_patch = {"TemperatureThreshold": TEMPERATURE_THRESHOLD}
+                        await module_client.patch_twin_reported_properties(reported_patch)
+                        print("Reported properties updated")
+                except Exception as ex:
+                    print("Unexpected error in twin_patch_listener: %s" % ex)
+
         # define behavior for halting the application
         def stdin_listener():
             while True:
@@ -61,9 +83,11 @@ async def main():
                     time.sleep(10)
 
         # Schedule task for C2D Listener
-        listeners = asyncio.gather(input1_listener(module_client))
-
-        print ( "The sample is now waiting for messages. ")
+        listeners = asyncio.gather(
+            input1_listener(module_client),
+            twin_patch_listener(module_client)
+        )
+        print("The sample is now waiting for messages.")
 
         # Run the stdin listener in the event loop
         loop = asyncio.get_event_loop()
@@ -77,7 +101,6 @@ async def main():
 
         # Finally, disconnect
         await module_client.disconnect()
-
     except Exception as e:
         print ( "Unexpected error %s " % e )
         raise
