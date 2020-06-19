@@ -9,6 +9,7 @@ import asyncio
 from six.moves import input
 import threading
 from azure.iot.device.aio import IoTHubModuleClient
+from azure.iot.device import MethodResponse
 import json
 
 # Global configurations
@@ -71,6 +72,20 @@ async def main():
                 except Exception as ex:
                     print("Unexpected error in twin_patch_listener: %s" % ex)
 
+        # define behavior for module direct method
+        async def direct_method_listener(module_client):
+            global RECEIVED_MESSAGES
+            while True:
+                method_request = await module_client.receive_method_request("GetMessageCount")
+                print("Method callback called with: Method Name = {method_name}, Payload = {payload}".format(
+                    method_name = method_request.name,
+                    payload = method_request.payload
+                ))
+                response_status = 200
+                response_payload = {"MessageCount": RECEIVED_MESSAGES}
+                method_response = MethodResponse(method_request.request_id, response_status, payload=response_payload)
+                await module_client.send_method_response(method_response)
+
         # define behavior for halting the application
         def stdin_listener():
             while True:
@@ -85,7 +100,8 @@ async def main():
         # Schedule task for C2D Listener
         listeners = asyncio.gather(
             input1_listener(module_client),
-            twin_patch_listener(module_client)
+            twin_patch_listener(module_client),
+            direct_method_listener(module_client)
         )
         print("The sample is now waiting for messages.")
 

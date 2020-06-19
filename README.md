@@ -2,6 +2,8 @@
 
 - D2C Messages
 - Module Twins(Desired and Reported properties)
+- Module Direct Method
+  - GetMessageCount
 
 ## .env
 
